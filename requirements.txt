@@ -1,0 +1,17 @@
+# Núcleo de dados e ML
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.4
+
+# App web
+streamlit>=1.33
+
+# Visualização (usada no app e nos notebooks)
+plotly>=5.20
+
+# Notebooks de exploração/modelagem
+jupyter>=1.0
+matplotlib>=3.8
+
+# Testes
+pytest>=8.0
