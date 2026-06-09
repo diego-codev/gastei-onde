@@ -31,7 +31,14 @@ gerados por código.
 ## Como rodar localmente
 
 ```bash
+# 1. Cria e ativa um ambiente virtual (isola as dependências do projeto)
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+# 2. Instala as dependências
 pip install -r requirements.txt
+
+# 3. Roda o app
 streamlit run app.py
 ```
 
