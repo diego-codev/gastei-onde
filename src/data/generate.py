@@ -201,16 +201,23 @@ def gerar_transacoes(
     fim: date = DEFAULT_FIM,
     frac_anomalia: float = 0.03,
     frac_label_noise: float = 0.03,
+    categorias: dict[str, dict] | None = None,
 ) -> pd.DataFrame:
-    """Gera `n` transações sintéticas com colunas: data, descricao, valor, categoria."""
+    """Gera `n` transações sintéticas com colunas: data, descricao, valor, categoria.
+
+    `categorias` permite injetar um conjunto alternativo de modelos de descrição mantendo o
+    resto da mecânica (usado no experimento de generalização, que troca os lojistas conhecidos
+    por marcas inéditas sem mexer nas distribuições de valor). Por padrão usa `CATEGORIAS`.
+    """
     rng = np.random.default_rng(seed)
 
-    nomes_cat = list(CATEGORIAS.keys())
-    pesos = np.array([CATEGORIAS[c]["peso"] for c in nomes_cat])
+    cats = categorias if categorias is not None else CATEGORIAS
+    nomes_cat = list(cats.keys())
+    pesos = np.array([cats[c]["peso"] for c in nomes_cat])
     pesos = pesos / pesos.sum()  # normaliza pra somar 1 (os pesos brutos são aproximados)
 
     # Sorteia a categoria de cada transação segundo os pesos -> gera o desbalanceamento.
-    categorias = rng.choice(nomes_cat, size=n, p=pesos)
+    categorias_sorteadas = rng.choice(nomes_cat, size=n, p=pesos)
 
     # Datas uniformes no período; ordenar depois deixa o extrato com cara de cronológico.
     dias_periodo = (fim - inicio).days
@@ -218,8 +225,8 @@ def gerar_transacoes(
     datas = [pd.Timestamp(inicio) + pd.Timedelta(days=int(o)) for o in offsets]
 
     descricoes, valores = [], []
-    for cat in categorias:
-        cfg = CATEGORIAS[cat]
+    for cat in categorias_sorteadas:
+        cfg = cats[cat]
         modelo = rng.choice(cfg["descricoes"])
         descricao = _aplica_ruido(modelo, rng)
         valor = _gera_valor(cfg, rng)
@@ -234,7 +241,7 @@ def gerar_transacoes(
             "data": [d.date().isoformat() for d in datas],
             "descricao": descricoes,
             "valor": valores,
-            "categoria": categorias,
+            "categoria": categorias_sorteadas,
         }
     )
 
