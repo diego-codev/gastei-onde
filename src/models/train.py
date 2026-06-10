@@ -84,12 +84,32 @@ def avaliar_holdout(df: pd.DataFrame, seed: int = 42, test_size: float = 0.25) -
     pred_regras = classificar_lote(X_te["descricao"])  # mesma base de teste, comparação justa
     return {
         "pipeline": pipe,
+        "X_test": X_te,  # exposto pra calcular predict_proba/AUC/confiança no notebook 02
         "y_true": y_te,
         "pred_ml": pred_ml,
         "pred_regras": pred_regras,
         "acc_ml": accuracy_score(y_te, pred_ml),
         "acc_regras": accuracy_score(y_te, pred_regras),
     }
+
+
+def prever_com_confianca(pipe: Pipeline, df: pd.DataFrame) -> pd.DataFrame:
+    """Predição + **confiança** (maior probabilidade da classe) por transação.
+
+    A confiança é `max(predict_proba)`: o quanto o modelo "aposta" na categoria escolhida.
+    É o segundo motivo de existir do ML (além da generalização): o app usa isso pra sinalizar
+    categorizações duvidosas — algo que regra binária não entrega. LogReg dá probabilidade
+    direto (não precisa de calibração extra como SVM), o que mantém o número interpretável.
+    """
+    proba = pipe.predict_proba(df[COLUNAS_X])
+    idx = proba.argmax(axis=1)
+    return pd.DataFrame(
+        {
+            "categoria_prevista": pipe.classes_[idx],
+            "confianca": proba[range(len(idx)), idx],
+        },
+        index=df.index,
+    )
 
 
 def _gerar_de_modelos(modelos_por_cat: dict[str, list[str]], n: int, seed: int) -> pd.DataFrame:
