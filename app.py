@@ -321,6 +321,13 @@ def main() -> None:
     st.title("gastei-onde 💸")
     st.caption("Sobe o extrato, eu categorizo cada transação e aponto os gastos fora da curva.")
 
+    # Banner sempre visível (não atrás de clique): quem sobe extrato real precisa ler isso
+    # ANTES de decidir subir — é dado financeiro pessoal, e o compromisso é parte do produto.
+    st.info(
+        "🔒 **Privacidade:** seu extrato é processado 100% em memória, só nesta sessão. "
+        "Nada é salvo em disco, nada é enviado a terceiros — fechou a aba, os dados se foram.",
+    )
+
     fonte = st.radio(
         "De onde vêm os dados?",
         ["Usar dados de exemplo", "Subir meu CSV"],
@@ -330,7 +337,10 @@ def main() -> None:
     df_bruto = None
     if fonte == "Usar dados de exemplo":
         df_bruto = carregar_exemplo()
-        st.info("Usando um extrato **sintético** de exemplo (nenhum dado real).")
+        st.info(
+            "Usando um extrato **sintético** de exemplo (nenhum dado real) — bom pra "
+            "conhecer o app antes de subir o seu."
+        )
     else:
         arquivo = st.file_uploader("CSV do extrato (colunas como Data, Histórico, Valor)", "csv")
         if arquivo is not None:
@@ -341,7 +351,14 @@ def main() -> None:
                 st.stop()
 
     if df_bruto is None:
-        st.stop()  # ainda sem dados: espera o upload
+        # Estado vazio do upload: orienta em vez de só esperar — o público-alvo não é técnico.
+        st.markdown(
+            "👆 No app ou site do seu banco, procure **exportar extrato** e escolha o formato "
+            "**CSV** (não PDF). Depois é só arrastar o arquivo aqui — aceito os layouts mais "
+            "comuns, mesmo com cabeçalho bagunçado. Se quiser só espiar antes, use os dados "
+            "de exemplo ali em cima."
+        )
+        st.stop()
 
     try:
         df = preparar_dados(df_bruto)
@@ -375,6 +392,10 @@ def main() -> None:
         fig = px.bar(por_cat, x="categoria", y="gasto", title="Gastos por categoria")
         fig.update_layout(xaxis_title="", yaxis_title="R$")
         st.plotly_chart(fig, width="stretch")
+    else:
+        # Extrato só com entradas (ex.: conta-salário): sem gasto não há gráfico — explica
+        # em vez de sumir com a seção.
+        st.caption("Nenhum gasto (valor negativo) no arquivo — o gráfico por categoria fica de fora.")
 
     # --- Tabela detalhada -----------------------------------------------------
     n_baixa = int((resultado["confianca"] < LIMIAR_CONFIANCA).sum())
