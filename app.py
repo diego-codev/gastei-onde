@@ -13,6 +13,10 @@ Rodar localmente:  streamlit run app.py
 
 from __future__ import annotations
 
+import csv
+import io
+import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -74,6 +78,159 @@ def parsear_valor(serie: pd.Series) -> pd.Series:
             return float("nan")
 
     return serie.map(_um)
+
+
+# Palavras-chave (sem acento) pra achar colunas em cabeçalho bagunçado de extrato. Uso radicais
+# ('hist', 'descr') pra casar variações; 'lanc' fica FORA de descrição porque casaria com a
+# própria coluna "Data Lançamento".
+_KW_VALOR = ("valor", "value", "amount", "montante")
+_KW_DESCRICAO = ("hist", "descr", "estabelec", "memo", "detalhe")
+_KW_DATA = ("data", "date")
+_RE_DATA = re.compile(r"^\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$")
+# Inteiro com separador de milhar opcional (48, -784, 2.042) — usado pra detectar valor partido.
+_RE_INTEIRO = re.compile(r"^[+-]?\d{1,3}(?:\.\d{3})+$|^[+-]?\d+$")
+_RE_CENTAVOS = re.compile(r"^\d{1,2}$")
+
+
+def _sem_acento(texto: object) -> str:
+    s = unicodedata.normalize("NFKD", str(texto))
+    return "".join(c for c in s if not unicodedata.combining(c)).strip().lower()
+
+
+def _bytes_de(arquivo) -> bytes:
+    if hasattr(arquivo, "getvalue"):       # UploadedFile do Streamlit / BytesIO
+        return arquivo.getvalue()
+    if hasattr(arquivo, "read"):           # file handle aberto
+        return arquivo.read()
+    return arquivo                          # já são bytes
+
+
+def _decodificar(dados: bytes) -> str | None:
+    for enc in ("utf-8-sig", "latin-1"):    # latin-1 sempre decodifica; utf-8-sig engole BOM
+        try:
+            return dados.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
+def _tem_essenciais(df: pd.DataFrame) -> bool:
+    """True se, após mapear sinônimos, o df tem ao menos descrição e valor."""
+    return {"descricao", "valor"}.issubset(mapear_colunas(df).columns)
+
+
+def _ler_tabular(dados: bytes) -> pd.DataFrame | None:
+    """CSV 'bem-comportado': descobre delimitador (`;`/`,`) e encoding. Devolve o melhor df lido,
+    priorizando um que já tenha as colunas essenciais."""
+    melhor = None
+    for encoding in ("utf-8-sig", "latin-1"):
+        for sep in (None, ";", ","):        # sep=None -> csv.Sniffer adivinha
+            try:
+                df = pd.read_csv(io.BytesIO(dados), sep=sep, engine="python", encoding=encoding)
+            except Exception:  # noqa: BLE001 - separador/encoding errado: tenta o próximo
+                continue
+            if df.shape[1] < 2:
+                continue
+            if _tem_essenciais(df):
+                return df
+            melhor = melhor if melhor is not None else df
+    return melhor
+
+
+def _combina_valor_partido(inteiro: str, centavos: str) -> float | None:
+    """Junta '48' + '42' -> 48.42 (o decimal virou coluna por causa da vírgula-delimitadora)."""
+    inteiro, centavos = inteiro.strip(), centavos.strip()
+    sinal = "-" if inteiro.startswith("-") else ""
+    digitos = inteiro.lstrip("+-").replace(".", "")     # tira separador de milhar
+    if not digitos.isdigit() or not centavos.isdigit():
+        return None
+    return float(f"{sinal}{digitos}.{centavos}")
+
+
+def _ler_extrato_br(dados: bytes) -> pd.DataFrame | None:
+    """Extrato BR 'sujo': preâmbulo antes do cabeçalho e/ou valor partido pela vírgula-decimal.
+
+    Tenta `;` antes de `,`: é o delimitador típico de export de banco BR (a vírgula fica livre
+    pro decimal). Com `;` errado num arquivo de vírgulas, a linha vira célula única e a checagem
+    de data descarta tudo — então a ordem é segura, não silenciosamente errada.
+    """
+    texto = _decodificar(dados)
+    if texto is None:
+        return None
+    for delim in (";", ","):
+        df = _parsear_linhas_extrato(list(csv.reader(texto.splitlines(), delimiter=delim)))
+        if df is not None:
+            return df
+    return None
+
+
+def _parsear_linhas_extrato(linhas: list[list[str]]) -> pd.DataFrame | None:
+    """Acha o cabeçalho (linha com coluna de valor E de descrição), localiza as colunas por
+    palavra-chave, detecta se o valor está partido (coluna inteira seguida de 1-2 dígitos) e
+    remonta. Pula tudo que não começa com uma data — descarta preâmbulo e rodapé.
+    """
+    cabecalho_idx = idx_valor = idx_desc = idx_data = None
+    for i, linha in enumerate(linhas):
+        celulas = [_sem_acento(c) for c in linha]
+        achar = lambda kws: next((j for j, c in enumerate(celulas)
+                                  if any(k in c for k in kws)), None)
+        iv, idesc, idata = achar(_KW_VALOR), achar(_KW_DESCRICAO), achar(_KW_DATA)
+        if iv is not None and idesc is not None:        # achou o cabeçalho real
+            cabecalho_idx, idx_valor, idx_desc, idx_data = i, iv, idesc, idata
+            break
+    if cabecalho_idx is None:
+        return None
+
+    dados_linhas = [ln for ln in linhas[cabecalho_idx + 1:]
+                    if len(ln) > idx_valor and (idx_data is None
+                                                or _RE_DATA.match(ln[idx_data] if idx_data < len(ln) else ""))]
+    if not dados_linhas:
+        return None
+
+    # Valor partido? Maioria das linhas tem inteiro em idx_valor e centavos (1-2 díg.) na seguinte.
+    partido = sum(
+        bool(_RE_INTEIRO.match(ln[idx_valor].strip())
+             and idx_valor + 1 < len(ln) and _RE_CENTAVOS.match(ln[idx_valor + 1].strip()))
+        for ln in dados_linhas
+    ) > len(dados_linhas) * 0.6
+
+    registros = []
+    for ln in dados_linhas:
+        data = ln[idx_data].strip() if idx_data is not None and idx_data < len(ln) else ""
+        # Descrição = todas as colunas de texto entre a descrição e o valor (histórico + lojista).
+        fim_texto = idx_valor if idx_valor > idx_desc else idx_desc + 1
+        descricao = " ".join(ln[j].strip() for j in range(idx_desc, min(fim_texto, len(ln)))
+                             if ln[j].strip())
+        if partido:
+            valor = (_combina_valor_partido(ln[idx_valor], ln[idx_valor + 1])
+                     if idx_valor + 1 < len(ln) else None)
+        else:
+            valor = parsear_valor(pd.Series([ln[idx_valor]])).iloc[0]
+        if valor is not None and pd.notna(valor):
+            registros.append((data, descricao, float(valor)))
+
+    return pd.DataFrame(registros, columns=["data", "descricao", "valor"]) if registros else None
+
+
+def ler_csv_upload(arquivo) -> pd.DataFrame:
+    """Lê o CSV do upload em duas camadas: primeiro como CSV normal; se não der, como extrato
+    BR 'sujo' (preâmbulo + valor partido). Reusa `preparar_dados` pra validação final."""
+    dados = _bytes_de(arquivo)
+
+    df = _ler_tabular(dados)
+    if df is not None and _tem_essenciais(df):
+        return df
+
+    extrato = _ler_extrato_br(dados)
+    if extrato is not None:
+        return extrato
+
+    if df is not None:           # leu algo, mas sem as colunas certas: erro de coluna (claro)
+        return df
+    raise ValueError(
+        "Não consegui interpretar o arquivo como CSV. Confira se é um CSV de extrato com "
+        "colunas como Data, Histórico/Descrição e Valor."
+    )
 
 
 def preparar_dados(df_bruto: pd.DataFrame) -> pd.DataFrame:
@@ -144,11 +301,13 @@ def _formatar_tabela(df: pd.DataFrame):
     )
 
     def _cor(row):
+        # Fixo fundo E texto: no tema escuro do Streamlit o texto padrão é claro e sumiria
+        # sobre esses fundos pastéis (pares de contraste do Bootstrap, legíveis nos dois temas).
         i = row.name
         if df.loc[i, "eh_anomalia"]:
-            return ["background-color: #f8d7da"] * len(row)        # vermelho claro
+            return ["background-color: #f8d7da; color: #842029"] * len(row)   # vermelho claro
         if df.loc[i, "confianca"] < LIMIAR_CONFIANCA:
-            return ["background-color: #fff3cd"] * len(row)        # âmbar
+            return ["background-color: #fff3cd; color: #664d03"] * len(row)   # âmbar
         return [""] * len(row)
 
     return (
@@ -176,9 +335,9 @@ def main() -> None:
         arquivo = st.file_uploader("CSV do extrato (colunas como Data, Histórico, Valor)", "csv")
         if arquivo is not None:
             try:
-                df_bruto = pd.read_csv(arquivo)
-            except Exception as e:  # CSV corrompido / não-CSV
-                st.error(f"Não consegui ler o arquivo como CSV: {e}")
+                df_bruto = ler_csv_upload(arquivo)
+            except ValueError as e:  # CSV corrompido / não-CSV / ilegível
+                st.error(str(e))
                 st.stop()
 
     if df_bruto is None:
