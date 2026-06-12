@@ -251,6 +251,14 @@ def preparar_dados(df_bruto: pd.DataFrame) -> pd.DataFrame:
     df["valor"] = parsear_valor(df["valor"])
     df = df.dropna(subset=["valor"])               # linhas sem valor legível não entram
     df["descricao"] = df["descricao"].fillna("").astype(str)
+    # Linha de saldo ("Saldo do dia", "Saldo Anterior", "S A L D O") não é transação: alguns
+    # bancos a intercalam no extrato e, como saldo é sempre alto pro padrão da conta, o detector
+    # de atípicos flagava todas (apontado por usuário em teste real). Comparo sem acento e sem
+    # espaço porque há banco que grafa "S A L D O" espaçado.
+    eh_saldo = (
+        df["descricao"].map(_sem_acento).str.lower().str.replace(" ", "").str.startswith("saldo")
+    )
+    df = df[~eh_saldo]
     if "data" not in df.columns:
         df["data"] = ""
     return df.reset_index(drop=True)
