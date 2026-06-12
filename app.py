@@ -353,7 +353,9 @@ def main() -> None:
 
     fonte = st.radio(
         "De onde vêm os dados?",
-        ["Usar dados de exemplo", "Subir meu CSV"],
+        # "Importar extrato" no lugar de "Subir CSV": sugestão literal de usuário em teste —
+        # "subir" é jargão de quem é de tech; "importar extrato" é o nome da ação no banco.
+        ["Usar dados de exemplo", "Importar extrato (arquivo CSV)"],
         horizontal=True,
     )
 
