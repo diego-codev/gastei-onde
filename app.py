@@ -404,7 +404,14 @@ def main() -> None:
     c1.metric("Transações", len(resultado))
     c2.metric("Total gasto", f"R$ {_brl(gastos['valor'].abs().sum())}")
     c3.metric("Total recebido", f"R$ {_brl(entradas['valor'].sum())}")
-    c4.metric("Gastos atípicos", int(resultado["eh_anomalia"].sum()))
+    c4.metric(
+        "Gastos atípicos",
+        int(resultado["eh_anomalia"].sum()),
+        # Usuário em teste perguntou se "atípico pega todos os valores maiores" — o termo não
+        # se explica sozinho. O help cobre desktop; no celular a legenda da tabela cobre.
+        help="Valor muito fora do padrão da categoria **neste extrato** — não é erro, "
+        "é um \"vale conferir\".",
+    )
 
     # --- Dashboard por categoria ---------------------------------------------
     if not gastos.empty:
@@ -425,9 +432,13 @@ def main() -> None:
     # --- Tabela detalhada -----------------------------------------------------
     n_baixa = int((resultado["confianca"] < LIMIAR_CONFIANCA).sum())
     st.subheader("Transações")
+    # Em linguagem leiga, sem "z-score"/"confiança do modelo": é a única explicação visível
+    # no celular (tooltip de métrica exige hover). Veio de pergunta real de usuário.
     st.caption(
-        f"⚠️ = gasto atípico para a categoria · linhas em âmbar = baixa confiança "
-        f"(< {LIMIAR_CONFIANCA:.0%}), vale revisar ({n_baixa} transações)."
+        f"⚠️ **Atípico** = valor bem fora do padrão dessa categoria neste extrato. Não é "
+        f"necessariamente um problema — é um \"confere isso\". · Linhas em **âmbar** = o app "
+        f"teve pouca certeza da categoria (abaixo de {LIMIAR_CONFIANCA:.0%}); vale conferir "
+        f"({n_baixa} transações)."
     )
     st.dataframe(_formatar_tabela(resultado), width="stretch", hide_index=True)
 
