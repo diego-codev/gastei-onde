@@ -38,6 +38,10 @@ SINONIMOS_COLUNAS: dict[str, tuple[str, ...]] = {
     "data": ("data", "date", "data lancamento", "data do lancamento", "data mov"),
     "descricao": ("descricao", "descrição", "historico", "histórico", "lancamento",
                   "lançamento", "estabelecimento", "memo", "detalhe"),
+    # Alguns bancos partem a descrição em duas colunas: o tipo em "Lançamento" e o nome do
+    # favorecido em "Detalhes". A segunda vira um alvo próprio pra ser CONCATENADA à descrição
+    # no preparar_dados — sem ela o modelo veria só "Pix - Enviado", zero sinal.
+    "detalhes": ("detalhes", "detalhe", "complemento"),
     "valor": ("valor", "value", "amount", "valor (r$)", "valor r$", "montante"),
 }
 
@@ -49,7 +53,9 @@ def mapear_colunas(df: pd.DataFrame) -> pd.DataFrame:
     renomear = {}
     for alvo, sinonimos in SINONIMOS_COLUNAS.items():
         for s in sinonimos:
-            if s in atual:
+            # "detalhe" é sinônimo de descricao E de detalhes: o guard impede que a mesma
+            # coluna original seja reivindicada por dois alvos (descricao vem antes, vence).
+            if s in atual and atual[s] not in renomear:
                 renomear[atual[s]] = alvo
                 break
     return df.rename(columns=renomear)
@@ -240,6 +246,15 @@ def preparar_dados(df_bruto: pd.DataFrame) -> pd.DataFrame:
     sem eles não há o que categorizar.
     """
     df = mapear_colunas(df_bruto)
+    if "detalhes" in df.columns:
+        detalhes = df["detalhes"].fillna("").astype(str).str.strip()
+        if "descricao" in df.columns:
+            df = df.assign(
+                descricao=(df["descricao"].fillna("").astype(str) + " " + detalhes).str.strip()
+            )
+        else:
+            # só "Detalhes" no arquivo: ela É a descrição
+            df = df.rename(columns={"detalhes": "descricao"})
     faltando = [c for c in ("descricao", "valor") if c not in df.columns]
     if faltando:
         raise ValueError(
