@@ -344,11 +344,13 @@ def main() -> None:
     st.title("gastei-onde 💸")
     st.caption("Sobe o extrato, eu categorizo cada transação e aponto os gastos fora da curva.")
 
-    # Banner sempre visível (não atrás de clique): quem sobe extrato real precisa ler isso
-    # ANTES de decidir subir — é dado financeiro pessoal, e o compromisso é parte do produto.
-    st.info(
+    # Privacidade sempre visível (não atrás de clique): quem sobe extrato real precisa ler isso
+    # ANTES de decidir subir — é dado financeiro pessoal. Em caption, não em st.info: usuário em
+    # teste leu a pilha de caixas azuis do topo como "tela de erro"; o texto continua visível,
+    # só perde o formato de alerta.
+    st.caption(
         "🔒 **Privacidade:** seu extrato é processado 100% em memória, só nesta sessão. "
-        "Nada é salvo em disco, nada é enviado a terceiros — fechou a aba, os dados se foram.",
+        "Nada é salvo em disco, nada é enviado a terceiros — fechou a aba, os dados se foram."
     )
 
     fonte = st.radio(
@@ -362,7 +364,7 @@ def main() -> None:
     df_bruto = None
     if fonte == "Usar dados de exemplo":
         df_bruto = carregar_exemplo()
-        st.info(
+        st.caption(
             "Usando um extrato **sintético** de exemplo (nenhum dado real) — bom pra "
             "conhecer o app antes de subir o seu."
         )
