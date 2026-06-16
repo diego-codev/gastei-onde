@@ -3,12 +3,7 @@
 > Sobe o CSV do extrato bancário, o app **categoriza cada transação**, mostra **o quanto
 > ele confia** em cada palpite e **destaca os gastos fora da curva** — tudo num dashboard.
 
-### ▶️ Demo ao vivo: **[gastei-onde.streamlit.app](https://gastei-onde.streamlit.app)**
-
-![CI](https://github.com/diego-codev/gastei-onde/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.12-blue)
-![Streamlit](https://img.shields.io/badge/streamlit-app-FF4B4B)
-![License](https://img.shields.io/badge/license-MIT-green)
+### Demo ao vivo: **[gastei-onde.streamlit.app](https://gastei-onde.streamlit.app)**
 
 Extrato de banco é bagunçado: `PAG*IFD`, `TEF UBER *TRIP`, `PIX ENVIADO`... bater o olho e
 entender pra onde o dinheiro foi é chato. Este projeto transforma essa bagunça em categorias
@@ -37,7 +32,7 @@ de gasto atípico (linha realçada) — descrições cruas viram informação ac
 
 ![Tabela de transações: descrição crua, categoria prevista, confiança e destaque de gasto atípico](assets/transacoes.png)
 
-### O argumento central, honesto
+### O argumento central
 
 Numa base com a mesma distribuição do treino, o baseline por regras até empata com o ML
 (o dado sintético tem descrições derivadas de palavras-chave, então regra vai bem). **O ML
@@ -59,7 +54,7 @@ acerto de erro (média 0,87 nos acertos vs 0,59 nos erros) — com o corte em 0,
 
 ---
 
-## De "está no ar" pra "melhorei com feedback real"
+## Melhora baseada em feedback real
 
 Depois de subir o app, pedi pra pessoas **não-técnicas** da minha família usarem com o
 extrato real do banco delas — e observei sem ajudar. O que travou virou correção:
